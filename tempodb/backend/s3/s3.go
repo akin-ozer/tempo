@@ -98,23 +98,47 @@ func (s *overrideSignatureVersion) IsExpired() bool {
 
 // NewNoConfirm gets the S3 backend without testing it
 func NewNoConfirm(cfg *Config) (backend.RawReader, backend.RawWriter, backend.Compactor, error) {
-	rw, err := internalNew(cfg, false)
+	rw, err := internalNew(cfg, false, nil)
 	return rw, rw, rw, err
 }
 
 // New gets the S3 backend
 func New(cfg *Config) (backend.RawReader, backend.RawWriter, backend.Compactor, error) {
-	rw, err := internalNew(cfg, true)
+	rw, err := internalNew(cfg, true, nil)
 	return rw, rw, rw, err
 }
 
 // NewVersionedReaderWriter creates a client to perform versioned requests. Note that write requests are
 // best-effort since the S3 API does not support precondition headers.
 func NewVersionedReaderWriter(cfg *Config) (backend.VersionedReaderWriter, error) {
-	return internalNew(cfg, true)
+	return internalNew(cfg, true, nil)
 }
 
-func internalNew(cfg *Config, confirm bool) (*readerWriter, error) {
+// Backend is the S3 backend, for backends that build on it.
+type Backend struct {
+	*readerWriter
+}
+
+// TransportWrapper wraps next, the transport a client of the S3 backend sends its requests with.
+// creds are the credentials the client signs its requests with.
+type TransportWrapper func(next http.RoundTripper, creds *credentials.Credentials) http.RoundTripper
+
+// NewWithTransport gets the S3 backend without testing it, like NewNoConfirm, with its clients
+// sending their requests through the transports wrap returns.
+func NewWithTransport(cfg *Config, wrap TransportWrapper) (*Backend, error) {
+	rw, err := internalNew(cfg, false, wrap)
+	if err != nil {
+		return nil, err
+	}
+	return &Backend{readerWriter: rw}, nil
+}
+
+// Core returns the client the backend sends its requests with, other than hedged reads.
+func (b *Backend) Core() *minio.Core {
+	return b.core
+}
+
+func internalNew(cfg *Config, confirm bool, wrap TransportWrapper) (*readerWriter, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
@@ -134,12 +158,12 @@ func internalNew(cfg *Config, confirm bool) (*readerWriter, error) {
 		minio.DefaultRetryCap = cfg.RetryBackoffMax
 	}
 
-	core, err := createCore(cfg, false)
+	core, err := createCore(cfg, false, wrap)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error creating core: %w", err)
 	}
 
-	hedgedCore, err := createCore(cfg, true)
+	hedgedCore, err := createCore(cfg, true, wrap)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error creating hedgedCore: %w", err)
 	}
@@ -668,7 +692,11 @@ func (rw *readerWriter) readAllWithObjInfo(ctx context.Context, name string) ([]
 
 func (rw *readerWriter) readRange(ctx context.Context, objName string, offset int64, buffer []byte) error {
 	options := getObjectOptions(rw)
-	err := options.SetRange(offset, offset+int64(len(buffer)))
+	end := offset + int64(len(buffer)) - 1
+	if len(buffer) == 0 {
+		end = offset
+	}
+	err := options.SetRange(offset, end)
 	if err != nil {
 		return fmt.Errorf("error setting headers for range read in s3: %w", err)
 	}
@@ -729,7 +757,7 @@ func fetchCreds(cfg *Config) (*credentials.Credentials, error) {
 	return creds, nil
 }
 
-func createCore(cfg *Config, hedge bool) (*minio.Core, error) {
+func createCore(cfg *Config, hedge bool, wrap TransportWrapper) (*minio.Core, error) {
 	creds, err := fetchCreds(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch credentials: %w", err)
@@ -740,9 +768,11 @@ func createCore(cfg *Config, hedge bool) (*minio.Core, error) {
 		return nil, fmt.Errorf("create minio.DefaultTransport: %w", err)
 	}
 
-	/* minio sets MaxIdleConns to 100 but we should also increase per host to 100 */
-	customTransport.MaxIdleConnsPerHost = 100
-	customTransport.MaxIdleConns = 100
+	// Idle connections beyond these limits are closed when a request finishes, and the next
+	// burst of requests has to dial and TLS handshake new ones. minio's per-host default is 16.
+	customTransport.MaxIdleConns = valueOrDefault(cfg.MaxIdleConns, defaultMaxIdleConns)
+	customTransport.MaxIdleConnsPerHost = valueOrDefault(cfg.MaxIdleConnsPerHost, defaultMaxIdleConns)
+	instrumentation.CountDials(customTransport, "s3")
 
 	tlsConfig, err := cfg.GetTLSConfig()
 	if err != nil {
@@ -753,8 +783,13 @@ func createCore(cfg *Config, hedge bool) (*minio.Core, error) {
 		customTransport.TLSClientConfig = tlsConfig
 	}
 
+	var base http.RoundTripper = customTransport
+	if wrap != nil {
+		base = wrap(customTransport, creds)
+	}
+
 	// add instrumentation
-	transport := instrumentation.NewTransport(customTransport)
+	transport := instrumentation.NewTransport(base)
 	var stats *hedgedhttp.Stats
 	if hedge && cfg.HedgeRequestsAt != 0 {
 		transport, stats, err = hedgedhttp.NewRoundTripperAndStats(cfg.HedgeRequestsAt, cfg.HedgeRequestsUpTo, transport)
@@ -784,6 +819,13 @@ func createCore(cfg *Config, hedge bool) (*minio.Core, error) {
 
 	core.SetS3EnableDualstack(cfg.UseDualStack)
 	return core, err
+}
+
+func valueOrDefault(v, def int) int {
+	if v > 0 {
+		return v
+	}
+	return def
 }
 
 func readError(err error) error {

@@ -1,6 +1,6 @@
 module github.com/grafana/tempo/tools
 
-go 1.27.1
+go 1.27.3
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -26,7 +26,7 @@ require (
 	codeberg.org/chavacava/garif v0.2.0 // indirect
 	codeberg.org/polyfloyd/go-errorlint v1.9.0 // indirect
 	dev.gaijin.team/go/exhaustruct/v4 v4.0.0 // indirect
-	dev.gaijin.team/go/exhaustruct/v5 v5.0.3 // indirect
+	dev.gaijin.team/go/exhaustruct/v5 v5.2.0 // indirect
 	dev.gaijin.team/go/golib v0.8.1 // indirect
 	github.com/4meepo/tagalign v1.4.3 // indirect
 	github.com/Abirdcfly/dupword v0.1.8 // indirect
@@ -42,7 +42,7 @@ require (
 	github.com/MirrexOne/unqueryvet v1.5.4 // indirect
 	github.com/OpenPeeDeeP/depguard/v2 v2.2.1 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
-	github.com/alecthomas/go-check-sumtype v0.3.1 // indirect
+	github.com/alecthomas/go-check-sumtype v0.5.0 // indirect
 	github.com/alexkohler/nakedret/v2 v2.0.6 // indirect
 	github.com/alexkohler/prealloc v1.1.0 // indirect
 	github.com/alfatraining/structtag v1.0.0 // indirect
@@ -224,13 +224,13 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20260811152304-ee035b5b010f // indirect
-	golang.org/x/mod v0.40.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260924152758-ed294f943157 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
